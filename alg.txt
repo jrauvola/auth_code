@@ -1,0 +1,49 @@
+Note: for simplicity's sake, if a track has multiple artists, only the first artist listed is used.
+
+
+Artist Scoring Algorithm:
+
+let artist_dict be a dictionary where the key is an artist id (string) and the value is the number of songs on the playlist by that artist (int)
+
+(e.g. if there are 6 songs by The Strokes [id = 1] and 3 songs by Radiohead [id = 2] on some playlist, and the playlist has 12 songs total, artist_dict looks like {1: 6, 2: 3, ...})
+
+then go through artist_dict and divide each value by the number of songs on the playlist.
+
+(continuing example: {1: 6, 2: 3, ...} -> {1: 6/12, 2 : 3/12} => {1: 0.5, 2: 0.25})
+
+now all the values in artist_dict should all add up to about 100 (there may be some rounding issues but they should be pretty minimal)
+
+now we want to grab the max value from artist_dict (which is 0.5 in this example) and take the reciprocal (in this case that is 1/0.5 = 2). This number is now going to be multiplied by each value in artist_dict.
+
+(example: {1: 0.5, 2: 0.25} -> {1: 0.5*2, 2: 0.25*2} => {1: 1.0, 2: 0.5})
+
+each of these will be the respective recommendation weight of each artist on the playlist.
+
+so now we look at the "related artists" for each artist in artist_dict.
+
+example: The Strokes related artists - Phoenix [id = 3], Arcade Fire [id = 4], ..... etc.
+	 Radiohead related artists - Arcade Fire [id = 4], Joy Division [id = 5], ..... etc.
+
+now we create a new dictionary, related_artist_dict. This will be similar to artist_dict, exceptit contains the ids of the bands that are related to each band from artist_dict. The important thing about this is, if for example Radiohead is a related artist from The Strokes, it would not be included in related_artist_dict, because it is already in the playlist.
+
+so related_artist_dict should look something like this {3: _some_value_, 4: _some_other_value_, 5: _another_value_, ....}
+
+now we know the keys in related_artist_dict are the artist ids, and the values are going to be the recommendation weights of the artist from which it was recommended.
+
+for example, {3: 1.0, 4: _some_other_value_, 5: 0.5, ....}
+
+but what about artist id 4? notice that this artist, Arcade Fire, was related to both The Strokes, and Radiohead. This means it has an even better chance of being a good recommendation, so that band's value in related_artist_dict is going to be the sum of the weights of all the artists it is related to.
+
+example: {...., 4: 1.0+0.5, ....} => {3: 1.0, 4: 1.5, 5: 0.5, ....}
+
+and now we have a list of bands and their compatibility scores (I multiply them by 100 before presenting them so they can be nice percentages, but it doesn't matter).
+
+
+Sorting Through Recommended Artists:
+
+Ok so now there's a metric shit ton of artists being recommended, which increases linearly for each new artist added to the playlist. So to sort through these, currently I'm only presenting the artists from related_artist_dict whose compatibility scores are > 0.66 (67% or greater, this number exists in my head because of a stats class I took in high school, I think it's the percentage of the first standard deviation of a bell curve or some shit like that. idk but it seems to work, we can change if need be).
+
+It's also possible this list will be huge so I added the capability to add a limit on the number of artists recommended.
+
+
+You have been ~SpotiVibe~'d
