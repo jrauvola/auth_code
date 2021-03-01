@@ -10,7 +10,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id='e2d254e0598f4ff49c5ce9
                                                scope="user-library-read"))
 
 def songs():
-    results = sp.current_user_saved_tracks(limit=1)
+    results = sp.current_user_saved_tracks(limit=10)
     for idx, item in enumerate(results['items']):
         track = item['track']
     #audio_analysis(track["id"])
@@ -23,41 +23,44 @@ def playlist():
         playlist2 = playlist['name']
         print(idx, playlist2)
 
+#def get_recommendations(seed_artists=None, seed_genres=None):
+
+
 #this is hecka spaghetti code so just ask me if you wanna know wtf it does
 def get_common_related_artists(artists, limit=None):
     print("Calculating results...\n")
     all_related = {}
+    #nested loop kills efficiency - how to fix this?
     for a_id in artists:
         related_artists = sp.artist_related_artists(a_id)
         for artist in related_artists['artists']:
             if artist['id'] in all_related.keys():
                 all_related[artist['id']] = round(all_related[artist['id']] + artists[a_id], 4)
             else:
-                all_related[artist['id']] = artists[a_id]
-    
+                if artist['id'] not in artists:
+                    all_related[artist['id']] = artists[a_id]
     all_related = {k: v for k, v in sorted(all_related.items(), key = lambda item: item[1], reverse=True)}
-    not_on_playlist = {}
     multiple_recs = {} 
-    
+    magic_number = 1/max(all_related.values())
     for (k, v) in all_related.items():
-        if k not in artists:
-            not_on_playlist[k] = v
-    magic_number = 1/max(not_on_playlist.values())
-    for (k, v) in not_on_playlist.items():
         if v*magic_number > .66:
             multiple_recs[k] = v
     sorted_recs = sorted(multiple_recs.items(), key = lambda item: item[1], reverse=True)
     if limit:
         sorted_recs = sorted_recs[:limit]
+    pair_dict = {}
     for (k, v) in sorted_recs:
+        pair_dict[k] = (v*100, v*magic_number*100)
         print(sp.artist(k)['name'])
+        print("Compatibility Index:", v)
         print("Compatibility Score:", str(round(v*magic_number*100, 2)) + '%\n')
-    return multiple_recs
+    return pair_dict
 
 #due to scoring becoming > 100%, this will only account for the first artist listed on each track
 #add epsilon or some shit to round
 def weighted_playlist_artists():
     print("Getting artists...")
+    count_songs = count_songs_on_playlist()
     results = sp.current_user_playlists(limit = 1)
     p_ids = get_items(results['items'])
     p_id = p_ids[0]
@@ -72,12 +75,11 @@ def weighted_playlist_artists():
             artists[artist['id']] = 1
     test_sum = 0
     for a in artists:
-        artists[a] = round((artists[a]/(count_songs_on_playlist())), 4)
+        artists[a] = artists[a]/count_songs
         test_sum += artists[a]
     return artists
 
 def playlist_artists(): 
-    #note: there's no way to get genre of a song...... wtf?
     results = sp.current_user_playlists(limit = 1)
     p_ids = get_items(results['items'])
     p_id = p_ids[0]
@@ -88,8 +90,8 @@ def playlist_artists():
         for artist in item['artists']:
             if artist['id'] not in artists:
                 artists.append(artist['id'])
-                print(artist['name'], artist['id'])
-    print(artists)
+                #print(artist['name'], artist['id'])
+    #print(artists)
     return artists
 
 def playlist_tracks(): 
@@ -109,8 +111,58 @@ def playlist_tracks():
             for artist in item['artists'][1:]:
                 print("                  ", artist['name'])
     print()
-    stats_magic(t_ids)
+    #stats_magic(t_ids)
+    return t_ids
 
+
+def get_best_artists(a_ids_weighted, percent_len=67):
+    a_ids = [k for k,v in sorted(a_ids_weighted.items(), key = lambda item: item[1], reverse=True)]
+    init_len = len(a_ids)
+    new_len = int(init_len*(percent_len/100))
+    return (a_ids[:new_len+1])
+    #print(sp.artists(a_ids[:new_len+1])['artists'])
+
+def get_better_artists_recs(a_ids_weighted):
+    #a_ids = [k for k in a_ids_weighted.keys() if a_ids_weighted[k][1] > 66]
+    #print(a_ids)
+    a_ids = a_ids_weighted.keys()
+    recomms = []
+    for a_id in a_ids:
+        recs = sp.recommendations(seed_artists = [a_id], seed_genres = None, seed_tracks = None)
+        #for rec in recs['tracks']:
+        #    print(rec)
+        
+        for rec in recs['tracks']:
+            print(rec['artists'][0]['name'], rec['name'])
+            if rec['id'] not in recomms:
+                recomms.append(rec['id'])
+    print(recomms)
+    return recomms
+
+def get_artists_recs(a_ids):
+    recomms = []
+    for a_id in a_ids:
+        recs = sp.recommendations(seed_artists = [a_id], seed_genres = None, seed_tracks = None)
+        #for rec in recs['tracks']:
+        #    print(rec)
+        
+        for rec in recs['tracks']:
+            print(rec['artists'][0]['name'], rec['name'])
+            if rec['id'] not in recomms:
+                recomms.append(rec['id'])
+    print(recomms)
+    return recomms
+
+#had to do this track by track since the stupid spotipy thing doesn't work with more than 5????? wtf dude
+def get_tracks_recs(t_ids):
+    recomms = []
+    for t_id in t_ids:
+        recs = sp.recommendations(seed_artists = None, seed_genres = None, seed_tracks = [t_id])
+        for rec in recs['tracks']:
+            if rec['id'] not in recomms:
+                recomms.append(rec['id'])
+    print(recomms)
+    return recomms
 
 #helper function, don't remember what it does, im tired
 def print_results(results):
@@ -123,6 +175,22 @@ def print_results(results):
             print(str(item) + ": " + str(results[item]))
             print()
 
+def get_artists_genres(a_ids_weights):
+
+    results = sp.artists(a_ids_weights.keys())
+    #print(results)
+    genres = {}
+    for item in results['artists']:
+        print(item['name'], item['id'], item['genres'], a_ids_weights[item['id']])
+
+def get_track_genres(t_ids):
+    results = sp.tracks(t_ids)
+    #print(results)
+    genres = {}
+    for item in results['tracks']:
+        print(item)
+        #print(item['name'], item['id'], item['genres'])
+
 #prints playlist(s)
 def print_items(items):
     for item in items:
@@ -131,6 +199,20 @@ def print_items(items):
             if elem != 'name':
                 print(str(elem) + ": " + str(item[elem]))
         print()
+
+def normalize_pop(pop):
+    return float(pop/100)
+
+def normalize_tempo(tempo):
+    lower_limit = 20
+    upper_limit = 180
+    if tempo < lower_limit:
+        new_tempo = 0.0
+    elif tempo > upper_limit:
+        new_tempo = 1.0
+    else:
+        new_tempo = tempo/(lower_limit+upper_limit)
+    return new_tempo
 
 #returns number of songs on first playlist, can change this to certain playlist by using ID instead
 def count_songs_on_playlist():
@@ -181,6 +263,32 @@ def stats_magic(t_ids):
         print(k + ":", v)
     print()
 
+#returns [[song1 danceability, song1 energy, ...], [song2 danceability, ....], ....]
+def get_suggested_features():
+    pass
+
+#returns harmonic mean summary vector of all suggested songs
+def get_suggested_summary():
+    pass
+
+#returns [[song1 danceability, song2 danceability,....], [song1 energy, .....], .....]
+def get_playlist_features():
+    features = [[] for i in range(9)]
+    t_ids = playlist_tracks()
+    for t_id in t_ids:
+        features[7].append(normalize_pop(sp.track(t_id)['popularity']))
+    data = audio_features(t_ids)
+    for song in data:
+        features[0].append(song['danceability'])
+        features[1].append(song['energy'])
+        features[2].append(song['speechiness'])
+        features[3].append(song['acousticness'])
+        features[4].append(song['liveness'])
+        features[5].append(song['valence'])
+        features[6].append(normalize_tempo(song['tempo']))
+        features[8].append(song['instrumentalness'])
+    #print(features)
+    return features
 # 
 # audio analysis for project - titles include 
 #
@@ -202,6 +310,7 @@ def audio_analysis(id):
         #print(idx, audio)
         print(audio)
 
+    #playlist_tracks()
 #  
 # danceability, energy, key, loudness, mode, speechiness, acoustiness, acoutsticness, instrumentalness, liveness, valence, tempo, audio_features, uri, track href
 # analysis_url, duration_ms, time_signature 
@@ -210,20 +319,39 @@ def audio_analysis(id):
 def audio_features(id):
     results = sp.audio_features(id)
     #print(type(results))
-    for idx, audio in enumerate(results):
-        print(audio)
+    """for idx, audio in enumerate(results):
+        print(audio)"""
+    return results
 # can train against artist_related_artists(artist_id)? 
 
 # reshape method - tenserflow 
 
+
 def main():
+    """results = sp.categories()
+    for result in results['categories']['items']:
+        print(result['name'])"""
+    
+    #get_tracks_recs(playlist_tracks())
+    #get_artists_recs(playlist_artists())
+    #get_better_artists_recs(weighted_playlist_artists())
+    
     #playlist_tracks()
-    get_common_related_artists(weighted_playlist_artists())
+    f = get_playlist_features()
+    print(f)
+    #print(sp.artist('5TwydvtVAZOeVpGUioBCSn'))
+    #print()
+    #print(sp.track('0X0Lz7LwpiIWcdGqVWaxXD')['popularity'])
+    #get_artists_recs(get_best_artists(weighted_playlist_artists()))
+
+    #for result in results['tracks']:
+    #    print(result['artists'][0]['name'], result['name'])
+    
+    #get_artists_genres(weighted_playlist_artists())
+    #get_common_related_artists(weighted_playlist_artists())
     #weighted_playlist_artists()
-    #print(sp.recommendation_genre_seeds())
     #playlist()
     #songs()
-
 
 if __name__ == "__main__":
     main()
