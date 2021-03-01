@@ -94,7 +94,7 @@ def playlist_artists():
     #print(artists)
     return artists
 
-def playlist_tracks(): 
+def print_playlist_tracks(): 
     #note: there's no way to get genre of a song...... wtf?
     results = sp.current_user_playlists(limit = 1)
     p_ids = get_items(results['items'])
@@ -111,6 +111,20 @@ def playlist_tracks():
             for artist in item['artists'][1:]:
                 print("                  ", artist['name'])
     print()
+    #stats_magic(t_ids)
+    return t_ids
+
+def playlist_tracks(): 
+    #note: there's no way to get genre of a song...... wtf?
+    results = sp.current_user_playlists(limit = 1)
+    p_ids = get_items(results['items'])
+    p_id = p_ids[0]
+    #print_tracks('4sJBQ3gA3wjVN8REraatpo') #one-song playlist, for testing sake
+    tracks = sp.playlist_tracks(p_id)
+    t_ids = []
+    for track in tracks['items']:
+        item = track['track']
+        t_ids.append(item['id'])
     #stats_magic(t_ids)
     return t_ids
 
@@ -154,14 +168,16 @@ def get_artists_recs(a_ids):
     return recomms
 
 #had to do this track by track since the stupid spotipy thing doesn't work with more than 5????? wtf dude
-def get_tracks_recs(t_ids):
+def get_tracks_recs(t_ids, limit=None):
     recomms = []
     for t_id in t_ids:
+        if limit:
+            if len(recomms) >= limit:
+                break
         recs = sp.recommendations(seed_artists = None, seed_genres = None, seed_tracks = [t_id])
         for rec in recs['tracks']:
             if rec['id'] not in recomms:
                 recomms.append(rec['id'])
-    print(recomms)
     return recomms
 
 #helper function, don't remember what it does, im tired
@@ -264,17 +280,45 @@ def stats_magic(t_ids):
     print()
 
 #returns [[song1 danceability, song1 energy, ...], [song2 danceability, ....], ....]
-def get_suggested_features():
-    pass
+def get_suggested_features(t_ids=None, limit=20):
+    features = []
+    if t_ids == None:
+        t_ids = playlist_tracks()
+    recs = get_tracks_recs(t_ids, limit)
+    data = audio_features(recs)
+    for song in data:
+        f = [song['danceability'], song['energy'], song['speechiness'], 
+             song['acousticness'], song['liveness'], 
+             song['valence'], normalize_tempo(song['tempo']), 
+             normalize_pop(sp.track(song['id'])['popularity']), song['valence']]
+        features.append(f)
+    return features
 
 #returns harmonic mean summary vector of all suggested songs
-def get_suggested_summary():
-    pass
+def get_suggested_summary(t_ids=None, limit=20, features=None):
+    d, e, s, a, l, v, t, p, v2 = ([], ) * 9
+    if t_ids == None:
+        t_ids = playlist_tracks()
+    if features == None:
+        features = get_suggested_features(t_ids, limit)
+    for f in features:
+        d.append(f[0])
+        e.append(f[1])
+        s.append(f[2])
+        a.append(f[3])
+        l.append(f[4])
+        v.append(f[5])
+        t.append(f[6])
+        p.append(f[7])
+        v2.append(f[8])
+    summary = [float(st.harmonic_mean(x)) for x in [d, e, s, a, l, v, t, p, v2]]
+    return summary
 
 #returns [[song1 danceability, song2 danceability,....], [song1 energy, .....], .....]
-def get_playlist_features():
+def get_playlist_features(t_ids=None):
     features = [[] for i in range(9)]
-    t_ids = playlist_tracks()
+    if t_ids == None:
+        t_ids = playlist_tracks()
     for t_id in t_ids:
         features[7].append(normalize_pop(sp.track(t_id)['popularity']))
     data = audio_features(t_ids)
@@ -337,8 +381,12 @@ def main():
     #get_better_artists_recs(weighted_playlist_artists())
     
     #playlist_tracks()
-    f = get_playlist_features()
-    print(f)
+    #f = get_playlist_features()
+    #print(f)
+    #t_ids = playlist_tracks()
+    #get_tracks_recs(t_ids, 10)
+    #get_suggested_features()
+    print(get_suggested_summary())
     #print(sp.artist('5TwydvtVAZOeVpGUioBCSn'))
     #print()
     #print(sp.track('0X0Lz7LwpiIWcdGqVWaxXD')['popularity'])
